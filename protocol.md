@@ -16,6 +16,7 @@ The simplicity of the protocol will lead to significant vulnerabilities, but it 
 This is the first message sent by the client to the server, it requests a connection with the given ID.
 The ID must be less than 32 characters, but aside from this limitation, it can be anything.
 The server will respond with `{CON_ACCEPTED}` if the connection was accepted.
+These initial connection-confirming messages are all sent in one packet, because the length is known (unlike chat messages).
 
 ### `{MSG{MESSAGE}}` (sent by client to server)
 This is a message sent by the client to the server, it is a message to be sent to all other users.

@@ -39,6 +39,8 @@ void *handle_client(void* p_fd){
     char* client_id; /* clients chosen ID */
     char* buffer; /* used to store incoming data */
     long bytes_received; /* used to store the number of bytes received from a single recv() call */
+    long bytes_sent; /* used to */
+    unsigned int i; /* used to iterate through the buffer */
     int CLOSE_CONNECTION_NOW = 0; /* if this value changes to 1, disconnect the client ASAP! */
     free(p_fd); /* free the memory allocated in main() */
     /* receive {REQCON{ID}} from client */
@@ -48,24 +50,33 @@ void *handle_client(void* p_fd){
     printf("Thread %d: Received %d bytes from client\n", thread_id, bytes_received);
     /* verify the message format is valid (does not verify that it is an actual command/message) */
     if(!verify_msg_format(buffer, bytes_received)){
-        printf("Thread %d: Received invalid format for REQCON message from client %d - Disconnecting\n", thread_id, fd);
+        printf("Thread %d: Received invalid format for REQCON message from client %d - Disconnecting (sending {CON_DENIED})\n", thread_id, fd);
+        bytes_sent = send(fd, "{CON_DENIED}", 13, 0);
+        free(buffer);
         close(fd);
         return NULL;
     }
     /* verify the command/message is of a valid type. at this moment, that means it must be REQCON */
     if(strncmp(buffer, "{REQCON{", 8) != 0){
-        printf("Thread %d: Received invalid message for REQCON message from client %d - Disconnecting\n", thread_id, fd);
+        printf("Thread %d: Received invalid message for REQCON message from client %d - Disconnecting (sending {CON_DENIED})\n", thread_id, fd);
+        bytes_sent = send(fd, "{CON_DENIED}", 13, 0);
+        free(buffer);
         close(fd);
         return NULL;
     }
     /* finally, read the ID from the message */
+    while(buffer[i] != '}'){ i++; } /* get the location of the first } in the buffer (this is where ID ends) */
     client_id = calloc(32, sizeof(char));
-    strncpy(client_id, buffer+8, bytes_received-11);
-    printf("Thread %d: Successfull connection, client-specified ID: %s\n", thread_id, client_id);
+    strncpy(client_id, buffer+8, i-8); /* copy the ID from the buffer into client_id */
+    printf("Thread %d: Successfull connection, client-specified ID: %s - Replying with {CON_ACCEPTED}\n", thread_id, client_id);
+    bytes_sent = send(fd, "{CON_ACCEPTED}", 15, 0);
+    printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
 
     /* start receiving messages and broadcasting them to everyone else */
     /* wait fuck,,,, how do i keep a track of all the clients>>????? */
 
+    free(client_id);
+    free(buffer);
     close(fd);
     return NULL;
 }
