@@ -65,7 +65,7 @@ void *handle_client(void* p_fd){
         return NULL;
     }
     /* finally, read the ID from the message */
-    while(buffer[i] != '}'){ i++; } /* get the location of the first } in the buffer (this is where ID ends) */
+    while(buffer[i] != '}'){ i++; } /* get the location of the first } in the buffer (this is where ID ends) */ /* THIS IS UNSAFE AS FUCK BRO */
     client_id = calloc(32, sizeof(char));
     strncpy(client_id, buffer+8, i-8); /* copy the ID from the buffer into client_id */
     printf("Thread %d: Successfull connection, client-specified ID: %s - Replying with {CON_ACCEPTED}\n", thread_id, client_id);
