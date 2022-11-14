@@ -8,6 +8,8 @@
 #include <pthread.h>
 #include <syscall.h>
 
+#define perror_exit(msg) perror(msg); exit(EXIT_FAILURE);
+
 int main(int argc, char const* argv[]){
     int client_fd;
     struct sockaddr_in server_address;
@@ -19,6 +21,7 @@ int main(int argc, char const* argv[]){
     int port = 0;
     unsigned long bytes_received;
     char* buffer;
+
     signal(SIGPIPE, SIG_IGN); /* Ignore SIGPIPE, this prevents the program from crashing if the server disconnects */
     /* get connection info from user */
     printf("Enter IP address of server to connect to: ");
@@ -30,18 +33,15 @@ int main(int argc, char const* argv[]){
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(port);
     if(inet_pton(AF_INET, ip_address, &server_address.sin_addr) <= 0){
-        perror("ERR: invalid address (inet_pton() failed)");
-        exit(1);
+        perror_exit("ERR: invalid address (inet_pton() failed)");
     }
     /* create a socket to connect to the server with */
     if((client_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
-        perror("ERR: socket() failed");
-        exit(1);
+        perror_exit("ERR: socket() failed");
     }
     /* connect to the server */
     if(connect(client_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0){
-        perror("ERR: connect() failed");
-        exit(1);
+        perror_exit("ERR: connect() failed");
     }
 
     /* == now that all the connecting crap is done, we can start talking == */
@@ -56,6 +56,7 @@ int main(int argc, char const* argv[]){
     strcat(reqcon, "}}"); /* close the braces */
     /* send reqcon to the server */
     send(client_fd, reqcon, 8+32+3, 0); /* this sends all of reqcon, but it's not a big deal, the server can handle that problem for us */
+    free(reqcon); /* free the memory we allocated for reqcon */
     /* see if we got {CON_ACCEPTED} back */
     buffer = calloc(15, sizeof(char)); /* allocate enough memory to store "{CON_ACCEPTED}" (15*sizeof(char)) */
     bytes_received = recv(client_fd, buffer, 15, 0); /* receive the message */

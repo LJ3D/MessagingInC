@@ -8,6 +8,8 @@
 #include <pthread.h>
 #include <syscall.h>
 
+#define perror_exit(msg) perror(msg); exit(EXIT_FAILURE);
+
 #define PORT 52727
 
 /*
@@ -41,13 +43,16 @@ void *handle_client(void* p_fd){
     long bytes_received; /* used to store the number of bytes received from a single recv() call */
     long bytes_sent; /* used to */
     unsigned int i; /* used to iterate through the buffer */
-    int CLOSE_CONNECTION_NOW = 0; /* if this value changes to 1, disconnect the client ASAP! */
+    
     free(p_fd); /* free the memory allocated in main() */
-    /* receive {REQCON{ID}} from client */
+
+    /* == RECEIVE CONNECT REQUEST == */
     /* this message identifies that a client is trying to connect */
     buffer = calloc(32+10, sizeof(char)); /* maximum ID size is 32 chars, +10 for the rest of the message */
     bytes_received = recv(fd, buffer, 42, 0); /* receive 42 bytes from the socket at fd and put them into the buffer */
     printf("Thread %d: Received %d bytes from client\n", thread_id, bytes_received);
+
+    /* == VERIFY MESSAGE IS VALID == */
     /* verify the message format is valid (does not verify that it is an actual command/message) */
     if(!verify_msg_format(buffer, bytes_received)){
         printf("Thread %d: Received invalid format for REQCON message from client %d - Disconnecting (sending {CON_DENIED})\n", thread_id, fd);
@@ -64,6 +69,8 @@ void *handle_client(void* p_fd){
         close(fd);
         return NULL;
     }
+
+    /* == MESSAGE IS VALID, PROCESS IT == */
     /* finally, read the ID from the message */
     while(buffer[i] != '}'){ i++; } /* get the location of the first } in the buffer (this is where ID ends) */ /* THIS IS UNSAFE AS FUCK BRO */
     client_id = calloc(32, sizeof(char));
@@ -72,15 +79,16 @@ void *handle_client(void* p_fd){
     bytes_sent = send(fd, "{CON_ACCEPTED}", 15, 0);
     printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
 
+    /* == PROCESS MESSAGES == */
     /* start receiving messages and broadcasting them to everyone else */
     /* wait fuck,,,, how do i keep a track of all the clients>>????? */
 
+    /* == CLEANUP == */
     free(client_id);
     free(buffer);
     close(fd);
     return NULL;
 }
-
 
 /*
 main just sets everything up and waits for incoming connections
@@ -96,13 +104,11 @@ int main(int argc, char const* argv[]){
     printf("Opening server....\n");
     /* create a socket to listen for incoming connections on */
     if((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
-        perror("ERR: socket() failed");
-        exit(1);
+        perror_exit("ERR: socket() failed");
     }
     /* set up the socket options */
     if(setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))){
-        perror("ERR: setsockopt() failed");
-        exit(1);
+        perror_exit("ERR: setsockopt() failed");
     }
     /* set up the address */
     address.sin_addr.s_addr = INADDR_ANY;
@@ -110,13 +116,11 @@ int main(int argc, char const* argv[]){
     address.sin_port = htons(PORT);
     /* bind the socket to the port */
     if(bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0){
-        perror("ERR: bind() failed");
-        exit(1);
+        perror_exit("ERR: bind() failed");
     }
     /* listen for incoming connections */
     if(listen(server_fd, 16) < 0){
-        perror("ERR: listen() failed");
-        exit(1);
+        perror_exit("ERR: listen() failed");
     }
     /* start receiving connections and creating threads for them */
     printf("Waiting for connections...\n");
@@ -126,8 +130,7 @@ int main(int argc, char const* argv[]){
         int* client_fd = malloc(sizeof(int)); /* This memory is freed when handle_client is called */
         int addrlen = sizeof(address);
         if((new_socket_fd = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0){
-            perror("ERR: accept() failed");
-            exit(1);
+            perror_exit("ERR: accept() failed");
         }
         *client_fd = new_socket_fd; /* Get a pointer to the new socket file descriptor */
         printf("New connection accepted, creating new thread to handle it \n");
