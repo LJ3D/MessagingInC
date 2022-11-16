@@ -12,6 +12,15 @@
 
 #define PORT 52727
 
+pthread_mutex_t mutex; /* used for client_socket_pointers */
+/*  
+client_socket_pointers is a dynamic array of pointers to socket descriptors. [*int, *int] points towards -> [realFdValue1, realFdValue2]
+each thread will only interact with the array when trying to communicate with a different client, it wont use the array for its own socket
+*/
+int* client_socket_pointers; 
+int client_count = 0; /* used for client_socket_pointers */
+
+
 /*
 verifies that a message is in fact a valid message.
 ensures that the number of braces makes sense.
@@ -37,18 +46,18 @@ behaves as outlined in protocol.md
 */
 void *handle_client(void* p_fd){
     int thread_id = syscall(SYS_gettid);
-    int fd = *(int*)p_fd; /* dereference the pointer to get the actual file descriptor */
     char* client_id; /* clients chosen ID */
     char* buffer; /* used to store incoming data */
     long bytes_received; /* used to store the number of bytes received from a single recv() call */
     long bytes_sent; /* used to */
     unsigned int i; /* used to iterate through the buffer */
     
-    free(p_fd); /* free the memory allocated in main() */
+    int fd = *(int*)p_fd; /* dereference the pointer to get the actual file descriptor */
+    /* free(p_fd);  free the memory allocated in main() */
 
     /* == RECEIVE CONNECT REQUEST == */
     /* this message identifies that a client is trying to connect */
-    buffer = calloc(32+10, sizeof(char)); /* maximum ID size is 32 chars, +10 for the rest of the message */
+    buffer = calloc(32+11, sizeof(char)); /* maximum ID size is 32 chars, +11 for the rest of the message */
     bytes_received = recv(fd, buffer, 42, 0); /* receive 42 bytes from the socket at fd and put them into the buffer */
     printf("Thread %d: Received %d bytes from client\n", thread_id, bytes_received);
 
@@ -80,8 +89,21 @@ void *handle_client(void* p_fd){
     printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
 
     /* == PROCESS MESSAGES == */
-    /* start receiving messages and broadcasting them to everyone else */
-    /* wait fuck,,,, how do i keep a track of all the clients>>????? */
+
+    pthread_mutex_lock(&mutex);
+    i=0;
+    while(i<client_count){
+        printf("Thread %d: client_socket_pointers[%d] = %d\n", thread_id, i, client_socket_pointers[i]);
+        i++;
+    }
+    pthread_mutex_unlock(&mutex);
+
+    printf("Entering infinite loop\n");
+
+    while(1){
+        /* infinite loop for testing purposes */
+        /* todo: remove client from client_socket_pointers when they disconnect, also free the memory */
+    }
 
     /* == CLEANUP == */
     free(client_id);
@@ -100,6 +122,7 @@ int main(int argc, char const* argv[]){
 
     signal(SIGPIPE, SIG_IGN); /* Ignore SIGPIPE, this prevents the server from crashing when a client disconnects */
     pthread_sigmask(SIGPIPE, NULL, NULL);
+    pthread_mutex_init(&mutex, NULL);
 
     printf("Opening server....\n");
     /* create a socket to listen for incoming connections on */
@@ -127,14 +150,23 @@ int main(int argc, char const* argv[]){
     while(1){
         int new_socket_fd;
         pthread_t new_thread;
-        int* client_fd = malloc(sizeof(int)); /* This memory is freed when handle_client is called */
         int addrlen = sizeof(address);
+        int* p_new_socket_fd = malloc(sizeof(int));
+        /* wait for a new connection */
         if((new_socket_fd = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0){
             perror_exit("ERR: accept() failed");
         }
-        *client_fd = new_socket_fd; /* Get a pointer to the new socket file descriptor */
-        printf("New connection accepted, creating new thread to handle it \n");
-        pthread_create(&new_thread, NULL, handle_client, client_fd);
+        p_new_socket_fd = &new_socket_fd; /* set the pointer to the new socket file descriptor */
+        /* store the pointer in the global array, as well as passing it to the thread. */
+        pthread_mutex_lock(&mutex);
+        client_count++;
+        client_socket_pointers = realloc(client_socket_pointers, client_count*sizeof(int));
+        client_socket_pointers[client_count-1] = *p_new_socket_fd;
+        pthread_mutex_unlock(&mutex);
+        /* create a new thread to handle the connection */
+        if(pthread_create(&new_thread, NULL, handle_client, p_new_socket_fd) != 0){
+            perror_exit("ERR: pthread_create() failed");
+        }
     }
     close(server_fd);
     return 0;

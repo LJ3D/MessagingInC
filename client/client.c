@@ -68,6 +68,9 @@ int main(int argc, char const* argv[]){
     free(buffer);
 
     /* messaging and everything goes here */
+    
+
+    while(1); /* keep the program running until it's killed */
 
     /* clean everything up */
     close(client_fd);
