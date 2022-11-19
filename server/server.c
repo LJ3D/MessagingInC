@@ -14,7 +14,7 @@
 
 pthread_mutex_t mutex; /* used for client_socket_pointers */
 /*  
-client_socket_pointers is a dynamic array of pointers to socket descriptors. [*int, *int] points towards -> [realFdValue1, realFdValue2]
+client_socket_pointers is a dynamic array of socket file descriptors
 each thread will only interact with the array when trying to communicate with a different client, it wont use the array for its own socket
 */
 int* client_socket_pointers; 
@@ -188,20 +188,16 @@ int main(int argc, char const* argv[]){
         int new_socket_fd;
         pthread_t new_thread;
         int addrlen = sizeof(address);
-        int* p_new_socket_fd = malloc(sizeof(int));
-        /* wait for a new connection */
         if((new_socket_fd = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0){
             perror_exit("ERR: accept() failed");
         }
-        p_new_socket_fd = &new_socket_fd; /* set the pointer to the new socket file descriptor */
-        /* store the pointer in the global array, as well as passing it to the thread. */
         pthread_mutex_lock(&mutex);
         client_count++;
         client_socket_pointers = realloc(client_socket_pointers, client_count*sizeof(int));
-        client_socket_pointers[client_count-1] = *p_new_socket_fd;
+        client_socket_pointers[client_count-1] = new_socket_fd;
         pthread_mutex_unlock(&mutex);
         /* create a new thread to handle the connection */
-        if(pthread_create(&new_thread, NULL, handle_client, p_new_socket_fd) != 0){
+        if(pthread_create(&new_thread, NULL, handle_client, (void*)&new_socket_fd) < 0){
             perror_exit("ERR: pthread_create() failed");
         }
     }
