@@ -27,6 +27,7 @@ void *receive_messages(void* p_fd){
         printf("Received %d bytes from server: %s\n", bytes_received, buffer);
     }
     free(buffer);
+    perror_exit("Connection closed");
     return NULL;
 }
 
@@ -45,12 +46,14 @@ int main(int argc, char const* argv[]){
     pthread_t receive_thread; /* used to receive messages from the server while the user is typing */
 
     signal(SIGPIPE, SIG_IGN); /* Ignore SIGPIPE, this prevents the program from crashing if the server disconnects */
-    /* get connection info from user */
-    printf("Enter IP address of server to connect to: ");
-    scanf("%16s", ip_address);
-    printf("Enter the port to connect through: ");
-    scanf("%5s", port_arr);
-    sscanf(port_arr, "%d", &port);
+    /* get connection info from command line */
+    if(argc != 3){
+        printf("Usage: %s <ip address> <port>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+    strncpy(ip_address, argv[1], 16);
+    strncpy(port_arr, argv[2], 5);
+    port = atoi(port_arr);
     /* set up server address sockaddr_in struct */
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(port);
@@ -92,20 +95,17 @@ int main(int argc, char const* argv[]){
     /* messaging and everything goes here */
     /* create a thread to receive messages from the server while the user is typing */
     pthread_create(&receive_thread, NULL, receive_messages, &client_fd);
-    /* loop until the user types "/quit" */
-    printf("Type /quit to quit\n");
     while(1){
+        int msg_size = 0;
         char* userInput = calloc(1016, sizeof(char));
         fgets(userInput, 1016, stdin);
-        if(strcmp(userInput, "/quit")==0){
-            printf("Quitting...\n");
-            break;
-        }
         buffer = calloc(1024, sizeof(char));
         strcat(buffer, "{MSG{");
         strcat(buffer, userInput);
         strcat(buffer, "}}");
-        send(client_fd, buffer, 1024, 0); /* this doesnt automatically format the message properly */
+        /* figure out how long the message is (avoid sending null bytes) */
+        msg_size = strlen(buffer);
+        send(client_fd, buffer, msg_size+1, 0);
         free(buffer);
     }
 

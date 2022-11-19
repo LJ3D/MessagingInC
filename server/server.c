@@ -80,10 +80,19 @@ void *handle_client(void* p_fd){
 
     /* == MESSAGE IS VALID, PROCESS IT == */
     /* finally, read the ID from the message */
-    while(buffer[i] != '}'){ i++; } /* get the location of the first } in the buffer (this is where ID ends) */ /* THIS IS UNSAFE AS FUCK BRO */
+    i=0; /* yeah this wasnt here before, didnt get any errors because of it (out of luck), but leaving this uninitialised couldve resulted in infinite loop! */
+    while(buffer[i] != '}' && i < bytes_received){ i++; } /* get the location of the first } in the buffer (this is where ID ends) */
+    if(i==bytes_received){
+        printf("Thread %d: Received invalid message for REQCON message from client %d - Disconnecting (sending {CON_DENIED})\n", thread_id, fd);
+        bytes_sent = send(fd, "{CON_DENIED}", 13, 0);
+        free(buffer);
+        close(fd);
+        return NULL;
+    }
     client_id = calloc(32, sizeof(char));
     strncpy(client_id, buffer+8, i-8); /* copy the ID from the buffer into client_id */
     printf("Thread %d: Successfull connection, client-specified ID: %s - Replying with {CON_ACCEPTED}\n", thread_id, client_id);
+    printf("Thread %d: client_id strlen: %d\n", thread_id, strlen(client_id));
     bytes_sent = send(fd, "{CON_ACCEPTED}", 15, 0);
     printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
 
@@ -93,7 +102,7 @@ void *handle_client(void* p_fd){
     while(1){
         buffer = calloc(1024, sizeof(char)); /* hard limit of 1024 on messages for now */
         bytes_received = recv(fd, buffer, 1024, 0);
-        printf("Thread %d: Received %d bytes from client %d\n", thread_id, bytes_received, fd);
+        printf("Thread %d: Received %d bytes from client %d: %s\n", thread_id, bytes_received, fd, buffer);
         if(bytes_received == 0){
             printf("Thread %d: Client %d disconnected\n", thread_id, fd);
             break;
@@ -101,12 +110,13 @@ void *handle_client(void* p_fd){
         if(!verify_msg_format(buffer, bytes_received)){
             continue;
         }
-        /* without any proper format checking (TODO), send the received message to all the other clients */
+        messageBuffer = calloc(1024, sizeof(char));
+        sprintf(messageBuffer, "{MSG{%s}{%s}}", client_id, buffer+5);
         pthread_mutex_lock(&mutex);
         i=0;
         while(i<client_count){
             if(client_socket_pointers[i]!=fd){
-                bytes_sent = send(client_socket_pointers[i], buffer, bytes_received, 0);
+                bytes_sent = send(client_socket_pointers[i], messageBuffer, strlen(client_id)+strlen(buffer+5)+7, 0);
                 printf("Thread %d: Sent %d bytes from client %d to client %d\n", thread_id, bytes_sent, fd, client_socket_pointers[i]);
             }
             i++;
