@@ -59,23 +59,25 @@ void *handle_client(void* p_fd){
     buffer = calloc(32+11, sizeof(char)); /* maximum ID size is 32 chars, +11 for the rest of the message */
     bytes_received = recv(fd, buffer, 42, 0); /* receive 42 bytes from the socket at fd and put them into the buffer */
     printf("Thread %d: Received %d bytes from client\n", thread_id, bytes_received);
+    if(bytes_received == 0){
+        printf("Thread %d: Client closed connection\n", thread_id);
+        goto cleanup;
+    }
 
     /* == VERIFY MESSAGE IS VALID == */
     /* verify the message format is valid (does not verify that it is an actual command/message) */
     if(!verify_msg_format(buffer, bytes_received)){
         printf("Thread %d: Received invalid format for REQCON message from client %d - Disconnecting (sending {CON_DENIED})\n", thread_id, fd);
         bytes_sent = send(fd, "{CON_DENIED}", 13, 0);
-        free(buffer);
-        close(fd);
-        return NULL;
+        printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
+        goto cleanup;
     }
     /* verify the command/message is of a valid type. at this moment, that means it must be REQCON */
     if(strncmp(buffer, "{REQCON{", 8) != 0){
         printf("Thread %d: Received invalid message for REQCON message from client %d - Disconnecting (sending {CON_DENIED})\n", thread_id, fd);
         bytes_sent = send(fd, "{CON_DENIED}", 13, 0);
-        free(buffer);
-        close(fd);
-        return NULL;
+        printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
+        goto cleanup;
     }
 
     /* == MESSAGE IS VALID, PROCESS IT == */
@@ -85,9 +87,8 @@ void *handle_client(void* p_fd){
     if(i==bytes_received){
         printf("Thread %d: Received invalid message for REQCON message from client %d - Disconnecting (sending {CON_DENIED})\n", thread_id, fd);
         bytes_sent = send(fd, "{CON_DENIED}", 13, 0);
-        free(buffer);
-        close(fd);
-        return NULL;
+        printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
+        goto cleanup;
     }
     client_id = calloc(32, sizeof(char));
     strncpy(client_id, buffer+8, i-8); /* copy the ID from the buffer into client_id */
@@ -99,18 +100,24 @@ void *handle_client(void* p_fd){
     /* == PROCESS MESSAGES == */
     /* listen for a message from the client, if valid, pass it on to all the other clients */
     /* going to make this very basic for now, proper error handling and stuff will come later */
+    
+    buffer = calloc(1024, sizeof(char)); /* hard limit of 1024 on messages for now */
+    messageBuffer = calloc(1024, sizeof(char)); /* allocate more than enough space to avoid some weird memory leak, maybe? */
     while(1){
-        buffer = calloc(1024, sizeof(char)); /* hard limit of 1024 on messages for now */
-        bytes_received = recv(fd, buffer, 1024, 0);
+        memset(buffer, 0, 1024); /* clear the buffer */
+        memset(messageBuffer, 0, 1024); /* clear the message buffer */
+        bytes_received = recv(fd, buffer, 1023, 0);
         printf("Thread %d: Received %d bytes from client %d: %s\n", thread_id, bytes_received, fd, buffer);
         if(bytes_received == 0){
             printf("Thread %d: Client %d disconnected\n", thread_id, fd);
             break;
         }
         if(!verify_msg_format(buffer, bytes_received)){
-            continue;
+            printf("Thread %d: Received invalid format for message from client %d - Disconnecting (sending {CON_DENIED})\n", thread_id, fd);
+            bytes_sent = send(fd, "{CON_DENIED}", 13, 0);
+            printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
+            break;
         }
-        messageBuffer = calloc(1024, sizeof(char));
         sprintf(messageBuffer, "{MSG{%s}{%s}}", client_id, buffer+5);
         pthread_mutex_lock(&mutex);
         i=0;
@@ -122,10 +129,10 @@ void *handle_client(void* p_fd){
             i++;
         }
         pthread_mutex_unlock(&mutex);
-        free(buffer);
     }
 
     /* == CLEANUP == */
+cleanup: /* i could make a function, but goto works just as well even if it is messy */ /* i should probably clean this up later */
     printf("Thread %d: Exiting (closing connection to client %d)\n", thread_id, fd);
     /* remove p_fd from client_socket_pointers */
     /* this may cause some fucky memory shit, ill have to find out */
@@ -145,6 +152,7 @@ void *handle_client(void* p_fd){
     pthread_mutex_unlock(&mutex);
     free(client_id);
     free(buffer);
+    free(messageBuffer);
     close(fd);
     return NULL;
 }
