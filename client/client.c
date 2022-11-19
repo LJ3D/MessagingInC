@@ -103,6 +103,7 @@ int main(int argc, char const* argv[]){
         msg_size = strlen(buffer);
         send(client_fd, buffer, msg_size+1, 0);
         free(buffer);
+        free(userInput);
     }
 
     /* clean everything up */
