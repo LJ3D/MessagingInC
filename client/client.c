@@ -76,9 +76,7 @@ int main(int argc, char const* argv[]){
     scanf("%32s", user_id_input);
     /* assemble "{REQCON{user_id_input}}" */
     reqcon = calloc(8+32+3, sizeof(char)); /* allocate enough memory for the absolute maximum size of REQCON */
-    strcpy(reqcon, "{REQCON{"); /* copy the start of the message */
-    strcat(reqcon, user_id_input); /* concatenate the user-specified ID in there */
-    strcat(reqcon, "}}"); /* close the braces */
+    sprintf(reqcon, "{REQCON{%s}}", user_id_input);
     /* send reqcon to the server */
     send(client_fd, reqcon, 8+32+3, 0); /* this sends all of reqcon, but it's not a big deal, the server can handle that problem for us */
     free(reqcon); /* free the memory we allocated for reqcon */
@@ -100,9 +98,7 @@ int main(int argc, char const* argv[]){
         char* userInput = calloc(1016, sizeof(char));
         fgets(userInput, 1016, stdin);
         buffer = calloc(1024, sizeof(char));
-        strcat(buffer, "{MSG{");
-        strcat(buffer, userInput);
-        strcat(buffer, "}}");
+        sprintf(buffer, "{MSG{%s}}", userInput);
         /* figure out how long the message is (avoid sending null bytes) */
         msg_size = strlen(buffer);
         send(client_fd, buffer, msg_size+1, 0);
