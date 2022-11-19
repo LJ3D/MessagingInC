@@ -20,6 +20,24 @@ each thread will only interact with the array when trying to communicate with a 
 int* client_socket_pointers; 
 int client_count = 0; /* used for client_socket_pointers */
 
+/*
+returns an integer representing the type of message received
+returns -1 if the message is not of a valid type
+format list:
+    1: {MSG{<message>}} - message from client to server
+    2: {REQCON{<id>}} - request to connect to client
+*/
+int get_msg_type(char* buffer, unsigned long size){
+    int msg_type = -1;
+    if(size < 8){ /* message is too short to be valid */
+        return msg_type;
+    }else if(strncmp(buffer, "{MSG{", 5) == 0){ /* message from client to server */
+        msg_type = 1;
+    }else if(strncmp(buffer, "{REQCON{", 8) == 0){ /* request to connect to client */
+        msg_type = 2;
+    }
+    return msg_type;
+}
 
 /*
 verifies that a message is in fact a valid message.
@@ -29,6 +47,9 @@ will do more in the future (NEEDS TO DO MORE IN THE FUTURE)
 int verify_msg_format(char* buffer, unsigned long size){
     unsigned long i = 0;
     unsigned long bracesCount = 0;
+    if(get_msg_type(buffer, size) == -1){
+        return 0;
+    }
     while(i < size-1){
         if(buffer[i] == '{'){
             bracesCount++;
@@ -59,6 +80,7 @@ void *handle_client(void* p_fd){
     buffer = calloc(32+11, sizeof(char)); /* maximum ID size is 32 chars, +11 for the rest of the message */
     bytes_received = recv(fd, buffer, 42, 0); /* receive 42 bytes from the socket at fd and put them into the buffer */
     printf("Thread %d: Received %d bytes from client\n", thread_id, bytes_received);
+    printf("Thread %d: Message type: %d\n", thread_id, get_msg_type(buffer, bytes_received));
     if(bytes_received == 0){
         printf("Thread %d: Client closed connection\n", thread_id);
         goto cleanup;
@@ -73,7 +95,7 @@ void *handle_client(void* p_fd){
         goto cleanup;
     }
     /* verify the command/message is of a valid type. at this moment, that means it must be REQCON */
-    if(strncmp(buffer, "{REQCON{", 8) != 0){
+    if(get_msg_type(buffer, bytes_received) != 2){
         printf("Thread %d: Received invalid message for REQCON message from client %d - Disconnecting (sending {CON_DENIED})\n", thread_id, fd);
         bytes_sent = send(fd, "{CON_DENIED}", 13, 0);
         printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
@@ -112,11 +134,8 @@ void *handle_client(void* p_fd){
             printf("Thread %d: Client %d disconnected\n", thread_id, fd);
             break;
         }
-        if(!verify_msg_format(buffer, bytes_received)){
-            printf("Thread %d: Received invalid format for message from client %d - Disconnecting (sending {CON_DENIED})\n", thread_id, fd);
-            bytes_sent = send(fd, "{CON_DENIED}", 13, 0);
-            printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
-            break;
+        if(!verify_msg_format(buffer, bytes_received) || get_msg_type(buffer, bytes_received) != 1){
+            printf("Thread %d: WARN: Received invalid message from client %d\n", thread_id, fd);
         }
         sprintf(messageBuffer, "{MSG{%s}{%s}}", client_id, buffer+5);
         pthread_mutex_lock(&mutex);
