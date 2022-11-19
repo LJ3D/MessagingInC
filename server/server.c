@@ -48,12 +48,11 @@ void *handle_client(void* p_fd){
     int thread_id = syscall(SYS_gettid);
     char* client_id; /* clients chosen ID */
     char* buffer; /* used to store incoming data */
+    char* messageBuffer;
     long bytes_received; /* used to store the number of bytes received from a single recv() call */
     long bytes_sent; /* used to */
     unsigned int i; /* used to iterate through the buffer */
-    
     int fd = *(int*)p_fd; /* dereference the pointer to get the actual file descriptor */
-    /* free(p_fd);  free the memory allocated in main() */
 
     /* == RECEIVE CONNECT REQUEST == */
     /* this message identifies that a client is trying to connect */
@@ -89,23 +88,51 @@ void *handle_client(void* p_fd){
     printf("Thread %d: Sent %d bytes to client %d\n", thread_id, bytes_sent, fd);
 
     /* == PROCESS MESSAGES == */
-
-    pthread_mutex_lock(&mutex);
-    i=0;
-    while(i<client_count){
-        printf("Thread %d: client_socket_pointers[%d] = %d\n", thread_id, i, client_socket_pointers[i]);
-        i++;
-    }
-    pthread_mutex_unlock(&mutex);
-
-    printf("Entering infinite loop\n");
-
+    /* listen for a message from the client, if valid, pass it on to all the other clients */
+    /* going to make this very basic for now, proper error handling and stuff will come later */
     while(1){
-        /* infinite loop for testing purposes */
-        /* todo: remove client from client_socket_pointers when they disconnect, also free the memory */
+        buffer = calloc(1024, sizeof(char)); /* hard limit of 1024 on messages for now */
+        bytes_received = recv(fd, buffer, 1024, 0);
+        printf("Thread %d: Received %d bytes from client %d\n", thread_id, bytes_received, fd);
+        if(bytes_received == 0){
+            printf("Thread %d: Client %d disconnected\n", thread_id, fd);
+            break;
+        }
+        if(!verify_msg_format(buffer, bytes_received)){
+            continue;
+        }
+        /* without any proper format checking (TODO), send the received message to all the other clients */
+        pthread_mutex_lock(&mutex);
+        i=0;
+        while(i<client_count){
+            if(client_socket_pointers[i]!=fd){
+                bytes_sent = send(client_socket_pointers[i], buffer, bytes_received, 0);
+                printf("Thread %d: Sent %d bytes from client %d to client %d\n", thread_id, bytes_sent, fd, client_socket_pointers[i]);
+            }
+            i++;
+        }
+        pthread_mutex_unlock(&mutex);
+        free(buffer);
     }
 
     /* == CLEANUP == */
+    printf("Thread %d: Exiting (closing connection to client %d)\n", thread_id, fd);
+    /* remove p_fd from client_socket_pointers */
+    /* this may cause some fucky memory shit, ill have to find out */
+    pthread_mutex_lock(&mutex);
+    i=0;
+    while(i<client_count){
+        if(client_socket_pointers[i] == fd){
+            /* found the socket descriptor, from this point on, move all the other pointers down one */
+            while(i<client_count-1){
+                client_socket_pointers[i] = client_socket_pointers[i+1];
+                i++;
+            }
+        }
+        i++;
+    }
+    client_count--;
+    pthread_mutex_unlock(&mutex);
     free(client_id);
     free(buffer);
     close(fd);

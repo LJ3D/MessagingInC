@@ -10,6 +10,27 @@
 
 #define perror_exit(msg) perror(msg); exit(EXIT_FAILURE);
 
+/* receive incoming data from the server and print it to stdout */
+/* will make this format things properly in the future */
+void *receive_messages(void* p_fd){
+    int fd = *(int*)p_fd;
+    char* buffer;
+    long bytes_received;
+    buffer = calloc(1024, sizeof(char));
+    while(1){
+        memset(buffer, 0, 1024); /* set the buffer to all 0s */
+        bytes_received = recv(fd, buffer, 1024, 0);
+        if(bytes_received == 0){
+            printf("Server closed connection\n");
+            break;
+        }
+        printf("Received %d bytes from server: %s\n", bytes_received, buffer);
+    }
+    free(buffer);
+    return NULL;
+}
+
+
 int main(int argc, char const* argv[]){
     int client_fd;
     struct sockaddr_in server_address;
@@ -21,6 +42,7 @@ int main(int argc, char const* argv[]){
     int port = 0;
     unsigned long bytes_received;
     char* buffer;
+    pthread_t receive_thread; /* used to receive messages from the server while the user is typing */
 
     signal(SIGPIPE, SIG_IGN); /* Ignore SIGPIPE, this prevents the program from crashing if the server disconnects */
     /* get connection info from user */
@@ -68,11 +90,23 @@ int main(int argc, char const* argv[]){
     free(buffer);
 
     /* messaging and everything goes here */
-    
-
-    while(1); /* keep the program running until it's killed */
+    /* create a thread to receive messages from the server while the user is typing */
+    pthread_create(&receive_thread, NULL, receive_messages, &client_fd);
+    /* loop until the user types "/quit" */
+    printf("Type /quit to quit\n");
+    while(1){
+        buffer = calloc(1024, sizeof(char));
+        scanf("%1023s", buffer);
+        if(strcmp(buffer, "/quit")==0){
+            printf("Quitting...\n");
+            break;
+        }
+        send(client_fd, buffer, 1024, 0); /* this doesnt automatically format the message properly */
+        free(buffer);
+    }
 
     /* clean everything up */
     close(client_fd);
+
     return 0;
 }
