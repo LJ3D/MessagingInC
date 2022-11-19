@@ -95,12 +95,16 @@ int main(int argc, char const* argv[]){
     /* loop until the user types "/quit" */
     printf("Type /quit to quit\n");
     while(1){
-        buffer = calloc(1024, sizeof(char));
-        scanf("%1023s", buffer);
-        if(strcmp(buffer, "/quit")==0){
+        char* userInput = calloc(1016, sizeof(char));
+        fgets(userInput, 1016, stdin);
+        if(strcmp(userInput, "/quit")==0){
             printf("Quitting...\n");
             break;
         }
+        buffer = calloc(1024, sizeof(char));
+        strcat(buffer, "{MSG{");
+        strcat(buffer, userInput);
+        strcat(buffer, "}}");
         send(client_fd, buffer, 1024, 0); /* this doesnt automatically format the message properly */
         free(buffer);
     }
