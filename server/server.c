@@ -62,6 +62,22 @@ int verify_msg_format(char* buffer, unsigned long size){
 }
 
 /*
+remove_bad_chars removes anything which isnt a nice normal human-readable character
+*/
+int remove_bad_chars(char* buffer, unsigned long size){
+    unsigned long i = 0;
+    unsigned long removed = 0;
+    while(i < size){
+        if(buffer[i] < 32 || buffer[i] > 126){
+            buffer[i] = ' ';
+            removed++;
+        }
+        i++;
+    }
+    return removed;
+}
+
+/*
 handle_client is spawned by main to talk to individual users in separate concurrent threads.
 behaves as outlined in protocol.md
 */
@@ -122,14 +138,14 @@ void *handle_client(void* p_fd){
     /* == PROCESS MESSAGES == */
     /* listen for a message from the client, if valid, pass it on to all the other clients */
     /* going to make this very basic for now, proper error handling and stuff will come later */
-    
-    buffer = calloc(1024, sizeof(char)); /* hard limit of 1024 on messages for now */
-    messageBuffer = calloc(1024, sizeof(char)); /* allocate more than enough space to avoid some weird memory leak, maybe? */
+    buffer = calloc(1024-11-32, sizeof(char)); /* 1024-11-32: 1024 is the maximum message size, -11 for the rest of the message, -32 for maximum ID size */
+    messageBuffer = calloc(1024, sizeof(char)); 
     while(1){
-        memset(buffer, 0, 1024); /* clear the buffer */
+        memset(buffer, 0, 1024-11-32); /* clear the buffer */
         memset(messageBuffer, 0, 1024); /* clear the message buffer */
-        bytes_received = recv(fd, buffer, 1023, 0);
-        printf("Thread %d: Received %d bytes from client %d: %s\n", thread_id, bytes_received, fd, buffer);
+        bytes_received = recv(fd, buffer, 1024-11-32, 0);
+        printf("Thread %d: Received %d bytes from client\n", thread_id, bytes_received);
+        printf("Thread %d: Removed %d bad characters from message\n", thread_id, remove_bad_chars(buffer, bytes_received)); /* remove any bad characters from the message */
         if(bytes_received == 0){
             printf("Thread %d: Client %d disconnected\n", thread_id, fd);
             break;
@@ -229,5 +245,6 @@ int main(int argc, char const* argv[]){
         }
     }
     close(server_fd);
+    free(client_socket_pointers);
     return 0;
 }
