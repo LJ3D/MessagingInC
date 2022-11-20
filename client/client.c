@@ -93,21 +93,17 @@ int main(int argc, char const* argv[]){
     /* messaging and everything goes here */
     /* create a thread to receive messages from the server while the user is typing */
     pthread_create(&receive_thread, NULL, receive_messages, &client_fd);
+    char* userInput = calloc(1016, sizeof(char));
+    buffer = calloc(1024, sizeof(char));
     while(1){
-        int msg_size = 0;
-        char* userInput = calloc(1016, sizeof(char));
         fgets(userInput, 1016, stdin);
-        buffer = calloc(1024, sizeof(char));
         sprintf(buffer, "{MSG{%s}}", userInput);
-        /* figure out how long the message is (avoid sending null bytes) */
-        msg_size = strlen(buffer);
-        send(client_fd, buffer, msg_size+1, 0);
-        free(buffer);
-        free(userInput);
+        send(client_fd, buffer, strlen(buffer)+1, 0);
     }
 
     /* clean everything up */
     close(client_fd);
-
+    free(buffer);
+    free(userInput);
     return 0;
 }
